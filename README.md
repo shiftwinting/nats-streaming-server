@@ -31,6 +31,7 @@ NATS Streaming provides the following high-level feature set.
         * [Standby Servers](#standby-servers)
         * [Shared State](#shared-state)
         * [Failover](#failover)
+    * [Partitioning](#partitioning)
 - [Getting Started](#getting-started)
     * [Building](#building)
     * [Running](#running)
@@ -222,8 +223,7 @@ To minimize the single point of failure, NATS Streaming server can be run in Fau
 of servers with one acting as the active server (accessing the store) and handling all communication with clients, and all others
 acting as standby servers.
 
-To start a server in Fault Tolerance (FT) mode, you specify an FT group name. This is so that in the future, one could have
-different FT groups for servers with the same cluster ID. For now, use it to simply enable Fault Tolerance mode.
+To start a server in Fault Tolerance (FT) mode, you specify an FT group name.
 
 Here is an example on how starting 2 servers in FT mode running on the same host and embedding the NATS servers:
 
@@ -263,6 +263,152 @@ receiving heartbeats from the current active server.
 It is possible that a standby trying to activate is not able to immediately acquire the store lock. When that happens,
 it goes back into standby mode, but if it fails to receive heartbeats from an active server, it will try again to
 acquire the store lock. The interval is random but as of now set to a bit more than a second.
+
+## Partitioning
+
+It is possible to limit the list of channels a server can handle. This can be used to:
+
+* Prevent creation of unwanted channels
+* Share the load between several servers running with the same cluster ID
+
+In order to do so, you need to enable the `partitioning` parameter in the configuration file,
+and also specify the list of allowed channels in the `channels` section of the `store_limits` configuration.
+
+Channels don't need to override any limit, but they need to be specified for the server to service only these channels.
+
+Here is an example:
+
+```
+partitioning: true
+store_limits: {
+    channels: {
+        "foo": {}
+        "bar": {}
+        # Use of wildcards in configuration is allowed. However, applications cannot
+        # publish to, or subscribe to, wildcard channels.
+        "baz.*": {}
+    }
+}
+```
+
+When partitioning is enabled, multiple servers with the same cluster ID can coexist on the same NATS network,
+each server handling its own set of channels. ***Note however that in this mode, state is not replicated
+(as it will be in the full clustering feature to come). The only communication between servers is to report
+if a given channel is handled in more than one server***.
+
+### Wildcards
+
+NATS Streaming does not support sending or subscribing to wildcard channels (such as `foo.*`).
+
+However, it is possible to use wildcards to define the partition that a server can handle.
+For instance, with the following configuration:
+```
+partitioning: true
+store_limits: {
+    channels: {
+        "foo.*": {}
+        "bar.>": {}
+    }
+}
+```
+The streaming server would accept subscriptions or published messages to channels such as:
+1. `foo.bar`
+2. `bar.baz`
+3. `bar.baz.bat`
+4. ...
+
+But would ignore messages or subscriptions on:
+
+1. `foo`
+2. `foo.bar.baz`
+3. `bar`
+4. `some.other.channel`
+5. ...
+
+### A given channel must be defined in a single server
+
+When a server starts, it sends its list of channels to all other servers on the same cluster in an attempt
+to detect duplicate channels. When a server receives this list and finds that it has a channel in
+common, it will return an error to the emitting server, which will then fail to start.
+
+However, on startup, it is possible that the undelying NATS cluster is not fully formed. The server would
+not get any response from the rest of the cluster and therefore start successully and service clients.
+Anytime a Streaming server detects that a NATS server was added to the NATS cluster, it will resend its list
+of channels. It means that currently running servers may suddendly fail with a message regarding duplicate channels.
+Having the same channel on different servers mean that a subscription would be created on all servers
+handling the channel, but only one server will receive and process message acknowledgements. Other servers
+would then redeliver messages (since they would not get the acknowledgements), which would cause duplicates.
+
+***In order to avoid issues with channels existing on several servers, it is ultimately the responsability
+of the administrator to ensure that channels are unique.***
+
+### Fault Tolerance and Partitioning
+
+You can easily combine the Fault Tolerance and Partioning feature.
+
+To illustrate, suppose that we want two partitions, one for `foo.>` and one for `bar.>`. 
+
+The configuration for the first server `foo.conf` would look like:
+```
+partitioning: true
+store_limits: {
+    channels: {
+        foo.>: {}
+    }
+}
+```
+
+The second configuration `bar.conf` would be:
+```
+partitioning: true
+store_limits: {
+    channels: {
+        bar.>: {}
+    }
+}
+```
+
+If you remember, Fault Tolerance is configured by specifying a name (`ft_group_name`). Suppose there is
+an NFS mount called `/nss/datastore` on both `host1` and `host2`.
+
+Starting an FT pair for the partion `foo` could look like this:
+```
+host1$ nats-streaming-server -store file -dir /nss/datastore/foodata -sc foo.conf -ft_group_name foo -cluster nats://host1:6222 -routes nats://host2:6222,nats://host2:6223
+
+host2$ nats-streaming-server -store file -dir /nss/datastore/foodata -sc foo.conf -ft_group_name foo -cluster nats://host2:6222 -routes nats://host1:6222,nats://host1:6223
+```
+Notice that each server on each note points to each other (the `-routes` parameter). The reason why
+we also point to `6223` will be explained later. They both listen for routes connections on their
+host's `6222` port.
+
+We now start the FT pair for `bar`. Since we are running from the same machines (we don't have to),
+we need to use a different port:
+```
+host1$ nats-streaming-server -store file -dir /nss/datastore/bardata -sc bar.conf -ft_group_name bar -p 4223 -cluster nats://host1:6223 -routes nats://host2:6222,nats://host2:6223
+
+host2$ nats-streaming-server -store file -dir /nss/datastore/bardata -sc bar.conf -ft_group_name bar -p 4223 -cluster nats://host2:6223 -routes nats://host1:6222,nats://host1:6223
+```
+You will notice that the `-routes` parameter points to both `6222` and `6223`, this is so that
+both partitions belong to the same cluster and be view as "one" by a Streaming application connecting
+to this cluster. Effectively, we have created a full mesh of 4 NATS servers that can all communicate
+with each other. Two of these servers are backups for servers running on the same FT group.
+
+### Applications behavior
+
+When an application connects, it specifies a cluster ID. If several servers are running with that same
+cluster ID, the application will be able to publish/subscribe to any channel handled by the cluster (as long
+as those servers are all connected to the NATS network).
+
+A published message will be received by only the server that has that channel defined.
+If no server is handling this channel, no specific error is returned, instead the publish call will timeout.
+Same goes for message acknowledgements. Only the server handling the subscription on this channel should
+receive those.
+
+However, other client requests (such has connection and subscription requests) are received by all servers.
+For connections, all servers handle them and the client library will receive a response from all servers in the
+cluster, but use the first one that it received.<br>
+For subscriptions, a server receiving the request for a channel that it does not handle will simply ignore
+the request. Again, if no server handle this channel, the client's subscriptin request will simply time out.
 
 # Getting Started
 
@@ -492,6 +638,12 @@ ack_subs_pool_size: 10
 # Can be ft_group, ft_group_name
 ft_group: "ft"
 
+# In order to use partitioning, this parameter needs to be set to true
+# and the list of channels defined in store_limits/channels section.
+# This section then serves two purposes, overriding limits for a given
+# channel or adding it to the partition.
+partitioning: true
+
 # Define store limits.
 # Can be limits, store_limits or StoreLimits.
 # See Store Limits chapter below for more details.
@@ -644,6 +796,9 @@ store_limits: {
             # Override with a higher limit
             max_age: "2h"
         }
+        # When using partitioning, channels need to be listed.
+        # They don't have to override any limit.
+        "bozo": {}
     }
 }
 ...
@@ -678,33 +833,29 @@ programmatically), then it becomes unlimited, regardless of the corresponding
 global limit.
 
 On startup the server displays the store limits. Notice the `*` at the right of a
-limit to indicate that the limit was inherited (either from global or default limits).
+limit to indicate that the limit was inherited from the default store limits.
+
+For channels that have been configured, their name is displayed and only the
+limits being specifically set are displayed to minimize the output.<br>
 This is what would be displayed with the above store limits configuration:
 
 ```
-[94641] 2017/04/14 18:20:10.836191 [INF] STREAM: --------- Store Limits ---------
-[94641] 2017/04/14 18:20:10.836200 [INF] STREAM: Channels:                   10
-[94641] 2017/04/14 18:20:10.836203 [INF] STREAM: -------- channels limits -------
-[94641] 2017/04/14 18:20:10.836208 [INF] STREAM:   Subscriptions:          1000 *
-[94641] 2017/04/14 18:20:10.836213 [INF] STREAM:   Messages     :         10000
-[94641] 2017/04/14 18:20:10.836235 [INF] STREAM:   Bytes        :      10.00 MB
-[94641] 2017/04/14 18:20:10.836251 [INF] STREAM:   Age          :        1h0m0s
-[94641] 2017/04/14 18:20:10.836257 [INF] STREAM: Channel: "foo"
-[94641] 2017/04/14 18:20:10.836262 [INF] STREAM:   Subscriptions:            50
-[94641] 2017/04/14 18:20:10.836266 [INF] STREAM:   Messages     :           300
-[94641] 2017/04/14 18:20:10.836272 [INF] STREAM:   Bytes        :      10.00 MB *
-[94641] 2017/04/14 18:20:10.836280 [INF] STREAM:   Age          :        1h0m0s *
-[94641] 2017/04/14 18:20:10.836284 [INF] STREAM: Channel: "bar"
-[94641] 2017/04/14 18:20:10.836288 [INF] STREAM:   Subscriptions:          1000 *
-[94641] 2017/04/14 18:20:10.836293 [INF] STREAM:   Messages     :            50
-[94641] 2017/04/14 18:20:10.836298 [INF] STREAM:   Bytes        :       1.00 KB
-[94641] 2017/04/14 18:20:10.836311 [INF] STREAM:   Age          :        1h0m0s *
-[94641] 2017/04/14 18:20:10.836315 [INF] STREAM: Channel: "baz"
-[94641] 2017/04/14 18:20:10.836319 [INF] STREAM:   Subscriptions:          1000 *
-[94641] 2017/04/14 18:20:10.836324 [INF] STREAM:   Messages     :     unlimited
-[94641] 2017/04/14 18:20:10.836329 [INF] STREAM:   Bytes        :       1.00 MB
-[94641] 2017/04/14 18:20:10.836334 [INF] STREAM:   Age          :        2h0m0s
-[94641] 2017/04/14 18:20:10.836338 [INF] STREAM: --------------------------------
+[56198] 2017/04/01 09:38:37.131509 [INF] STREAM: ---------- Store Limits ----------
+[56198] 2017/04/01 09:38:37.131517 [INF] STREAM: Channels:                   10
+[56198] 2017/04/01 09:38:37.131520 [INF] STREAM: --------- channels limits --------
+[56198] 2017/04/01 09:38:37.131526 [INF] STREAM:   Subscriptions:          1000 *
+[56198] 2017/04/01 09:38:37.131530 [INF] STREAM:   Messages     :         10000
+[56198] 2017/04/01 09:38:37.131549 [INF] STREAM:   Bytes        :      10.00 MB
+[56198] 2017/04/01 09:38:37.131573 [INF] STREAM:   Age          :        1h0m0s
+[56198] 2017/04/01 09:38:37.131578 [INF] STREAM: -------- list of channels --------
+[56198] 2017/04/01 09:38:37.131586 [INF] STREAM: "foo"
+[56198] 2017/04/01 09:38:37.131590 [INF] STREAM:  |-> Subscriptions:            50
+[56198] 2017/04/01 09:38:37.131593 [INF] STREAM:  |-> Messages     :           300
+[56198] 2017/04/01 09:38:37.131603 [INF] STREAM: "bar"
+[56198] 2017/04/01 09:38:37.131607 [INF] STREAM:  |-> Messages     :            50
+[56198] 2017/04/01 09:38:37.131611 [INF] STREAM:  |-> Bytes        :        1000 B
+[56198] 2017/04/01 09:38:37.131614 [INF] STREAM: "baz"
+[56198] 2017/04/01 09:38:37.131618 [INF] STREAM: ----------------------------------
 ```
 
 

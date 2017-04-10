@@ -1,4 +1,4 @@
-// Copyright 2016 Apcera Inc. All rights reserved.
+// Copyright 2016-2017 Apcera Inc. All rights reserved.
 
 package server
 
@@ -165,6 +165,9 @@ func TestParseConfig(t *testing.T) {
 	if opts.FTGroupName != "ft" {
 		t.Fatalf("Expected FTGroupName to be %q, got %q", "ft", opts.FTGroupName)
 	}
+	if !opts.Partitioning {
+		t.Fatalf("Expected Partitioning to be true, got false")
+	}
 }
 
 func TestParsePermError(t *testing.T) {
@@ -282,6 +285,7 @@ func TestParseWrongTypes(t *testing.T) {
 	expectFailureFor(t, "hb_fail_count: false", wrongTypeErr)
 	expectFailureFor(t, "ack_subs_pool_size: false", wrongTypeErr)
 	expectFailureFor(t, "ft_group: 123", wrongTypeErr)
+	expectFailureFor(t, "partitioning: 123", wrongTypeErr)
 	expectFailureFor(t, "store_limits:{max_channels:false}", wrongTypeErr)
 	expectFailureFor(t, "store_limits:{max_msgs:false}", wrongTypeErr)
 	expectFailureFor(t, "store_limits:{max_bytes:false}", wrongTypeErr)
@@ -293,8 +297,8 @@ func TestParseWrongTypes(t *testing.T) {
 	expectFailureFor(t, "store_limits:{channels:{\"foo\":{max_age:\"1h:0m\"}}}", wrongTimeErr)
 	expectFailureFor(t, "store_limits:{channels:{\"foo\":{max_age:false}}}", wrongTypeErr)
 	expectFailureFor(t, "store_limits:{channels:{\"foo\":{max_subs:false}}}", wrongTypeErr)
-	expectFailureFor(t, "store_limits:{channels:{\"foo.*\":{}}}", wrongSubjErr)
-	expectFailureFor(t, "store_limits:{channels:{\"foo.>\":{}}}", wrongSubjErr)
+	expectFailureFor(t, "store_limits:{channels:{\"foo.*bar\":{}}}", wrongSubjErr)
+	expectFailureFor(t, "store_limits:{channels:{\"foo.>.>\":{}}}", wrongSubjErr)
 	expectFailureFor(t, "store_limits:{channels:{\"foo..bar\":{}}}", wrongSubjErr)
 	expectFailureFor(t, "tls:{client_cert:123}", wrongTypeErr)
 	expectFailureFor(t, "tls:{client_key:123}", wrongTypeErr)

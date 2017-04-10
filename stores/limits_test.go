@@ -96,12 +96,12 @@ func TestBuildErrors(t *testing.T) {
 	// Reset sl
 	sl = testDefaultStoreLimits
 	cl = &ChannelLimits{}
-	sl.AddPerChannel("foo.*", cl)
+	sl.AddPerChannel("foo.*bar", cl)
 	expectError("invalid channel name")
 
 	sl = testDefaultStoreLimits
 	cl = &ChannelLimits{}
-	sl.AddPerChannel("foo.>", cl)
+	sl.AddPerChannel("foo.>.bar", cl)
 	expectError("invalid channel name")
 
 	sl = testDefaultStoreLimits

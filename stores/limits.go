@@ -38,7 +38,7 @@ func (sl *StoreLimits) Build() error {
 			len(sl.PerChannel), sl.MaxChannels)
 	}
 	for cn := range sl.PerChannel {
-		if !util.IsSubjectValid(cn) {
+		if !util.IsSubjectValid(cn, true) {
 			return fmt.Errorf("invalid channel name %q", cn)
 		}
 	}
