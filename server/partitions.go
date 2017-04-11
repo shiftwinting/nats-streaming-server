@@ -36,7 +36,7 @@ var (
 
 type partitions struct {
 	s               *StanServer
-	channels        map[string]struct{}
+	channels        []string
 	sl              *util.Sublist
 	nc              *nats.Conn
 	sendListSubject string
@@ -97,10 +97,10 @@ func (s *StanServer) initPartitions(sOpts *Options, nOpts *natsd.Options, storeC
 
 // Creates the channels map based on the store's PerChannel map that was given.
 func (p *partitions) createChannelsMapAndSublist(storeChannels map[string]*stores.ChannelLimits) {
-	p.channels = make(map[string]struct{}, len(storeChannels))
+	p.channels = make([]string, 0, len(storeChannels))
 	p.sl = util.NewSublist()
 	for c := range storeChannels {
-		p.channels[c] = struct{}{}
+		p.channels = append(p.channels, c)
 		// When creating the store, we have already checked that channel names
 		// were valid. So this call cannot fail.
 		p.sl.Insert(c, channelInterest)
@@ -173,7 +173,7 @@ func (p *partitions) postClientPublishIncomingMsgs() {
 // Create the internal subscriptions on the list of channels.
 func (p *partitions) initSubscriptions() error {
 	// NOTE: Use the server's nc connection here, not the partitions' one.
-	for channelName := range p.channels {
+	for _, channelName := range p.channels {
 		pubSubject := fmt.Sprintf("%s.%s", p.s.info.Publish, channelName)
 		if _, err := p.s.nc.ChanSubscribe(pubSubject, p.msgsCh); err != nil {
 			return fmt.Errorf("could not subscribe to publish subject %q, %v", channelName, err)
@@ -228,10 +228,6 @@ func (p *partitions) checkChannelsUniqueInCluster() error {
 // Sends the list of channels to a known subject, possibly splitting the list
 // in several requests if it cannot fit in a single message.
 func (p *partitions) sendChannelsList(replyInbox string) error {
-	channels := []string{}
-	for c := range p.channels {
-		channels = append(channels, c)
-	}
 	sendReq := func(channels []string) error {
 		buf := &bytes.Buffer{}
 		gob.NewEncoder(buf).Encode(channels)
@@ -248,12 +244,12 @@ func (p *partitions) sendChannelsList(replyInbox string) error {
 	maxPayload := p.nc.MaxPayload()
 	start := 0
 	end := 0
-	for end < len(channels) {
+	for end < len(p.channels) {
 		size := 0
 		tmpBuf := &bytes.Buffer{}
 		encoderTmpBuf := gob.NewEncoder(tmpBuf)
-		for end = start; end < len(channels); end++ {
-			encoderTmpBuf.Encode(channels[end])
+		for end = start; end < len(p.channels); end++ {
+			encoderTmpBuf.Encode(p.channels[end])
 			size += tmpBuf.Len()
 			// Leave room for the CtrlMsg header
 			if size > int(maxPayload-50) {
@@ -261,7 +257,7 @@ func (p *partitions) sendChannelsList(replyInbox string) error {
 			}
 			tmpBuf.Reset()
 		}
-		if err := sendReq(channels[start:end]); err != nil {
+		if err := sendReq(p.channels[start:end]); err != nil {
 			return err
 		}
 		start = end
@@ -324,7 +320,7 @@ func (p *partitions) processChannelsListRequests(m *nats.Msg) {
 	}
 	if !gotError {
 		// Go over our channels and check with the other server sublist
-		for c := range p.channels {
+		for _, c := range p.channels {
 			if r := sl.Match(c); len(r) > 0 {
 				reply.Data = []byte(c)
 				break
