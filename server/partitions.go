@@ -262,14 +262,7 @@ func (p *partitions) sendChannelsList(replyInbox string) error {
 		}
 		start = end
 	}
-	// Send an empty array to signal that we are done
-	if err := sendReq([]string{}); err != nil {
-		return err
-	}
-	if err := p.nc.Flush(); err != nil {
-		return err
-	}
-	return nil
+	return p.nc.Flush()
 }
 
 // Decode the incoming partitioning protocol message.
