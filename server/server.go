@@ -1183,7 +1183,7 @@ func printChannel(channelName string, limits, parentLimits *stores.ChannelLimits
 	}
 }
 
-// TODO:  Explore parameter passing in gnatsd.  Keep seperate for now.
+// TODO:  Explore parameter passing in gnatsd.  Keep separate for now.
 func (s *StanServer) configureClusterOpts(opts *server.Options) error {
 	// If we don't have cluster defined in the configuration
 	// file and no cluster listen string override, but we do

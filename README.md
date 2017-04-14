@@ -332,14 +332,14 @@ to detect duplicate channels. When a server receives this list and finds that it
 common, it will return an error to the emitting server, which will then fail to start.
 
 However, on startup, it is possible that the undelying NATS cluster is not fully formed. The server would
-not get any response from the rest of the cluster and therefore start successully and service clients.
+not get any response from the rest of the cluster and therefore start successfully and service clients.
 Anytime a Streaming server detects that a NATS server was added to the NATS cluster, it will resend its list
-of channels. It means that currently running servers may suddendly fail with a message regarding duplicate channels.
-Having the same channel on different servers mean that a subscription would be created on all servers
+of channels. It means that currently running servers may suddenly fail with a message regarding duplicate channels.
+Having the same channel on different servers means that a subscription would be created on all servers
 handling the channel, but only one server will receive and process message acknowledgements. Other servers
 would then redeliver messages (since they would not get the acknowledgements), which would cause duplicates.
 
-***In order to avoid issues with channels existing on several servers, it is ultimately the responsability
+***In order to avoid issues with channels existing on several servers, it is ultimately the responsibility
 of the administrator to ensure that channels are unique.***
 
 ### Fault Tolerance and Partitioning
@@ -408,7 +408,7 @@ However, other client requests (such has connection and subscription requests) a
 For connections, all servers handle them and the client library will receive a response from all servers in the
 cluster, but use the first one that it received.<br>
 For subscriptions, a server receiving the request for a channel that it does not handle will simply ignore
-the request. Again, if no server handle this channel, the client's subscriptin request will simply time out.
+the request. Again, if no server handle this channel, the client's subscription request will simply time out.
 
 # Getting Started
 

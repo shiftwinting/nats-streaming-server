@@ -54,8 +54,7 @@ func newNode() *node {
 	return &node{elements: make([]interface{}, 0, 4)}
 }
 
-// Create a new default level. We use FNV1A as the hash
-// algortihm for the tokens, which should be short.
+// Create a new default level.
 func newLevel() *level {
 	return &level{nodes: make(map[string]*node)}
 }
