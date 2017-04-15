@@ -33,16 +33,19 @@ func (sl *StoreLimits) Build() error {
 	if len(sl.PerChannel) == 0 {
 		return nil
 	}
-	if sl.MaxChannels > 0 && len(sl.PerChannel) > sl.MaxChannels {
-		return fmt.Errorf("too many channels defined (%v). The max channels limit is set to %v",
-			len(sl.PerChannel), sl.MaxChannels)
-	}
+	literals := 0
 	for cn := range sl.PerChannel {
 		if !util.IsSubjectValid(cn, true) {
 			return fmt.Errorf("invalid channel name %q", cn)
 		}
+		if util.IsSubjectLiteral(cn) {
+			literals++
+			if sl.MaxChannels > 0 && literals > sl.MaxChannels {
+				return fmt.Errorf("too many channels defined (%v). The max channels limit is set to %v",
+					literals, sl.MaxChannels)
+			}
+		}
 	}
-
 	// If we are here, it means that there was no error,
 	// so we now apply inheritance.
 	for _, cl := range sl.PerChannel {

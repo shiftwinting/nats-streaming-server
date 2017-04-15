@@ -346,7 +346,7 @@ of the administrator to ensure that channels are unique.***
 
 You can easily combine the Fault Tolerance and Partioning feature.
 
-To illustrate, suppose that we want two partitions, one for `foo.>` and one for `bar.>`. 
+To illustrate, suppose that we want two partitions, one for `foo.>` and one for `bar.>`.
 
 The configuration for the first server `foo.conf` would look like:
 ```
@@ -805,7 +805,7 @@ store_limits: {
 ```
 
 Note that the number of defined channels cannot be greater than the stores' maximum number
-of channels.
+of channels. ***This is true only for channels without wildcards.***
 
 Channels limits can override global limits by being either higher, lower or even set to
 unlimited.
@@ -840,22 +840,26 @@ limits being specifically set are displayed to minimize the output.<br>
 This is what would be displayed with the above store limits configuration:
 
 ```
-[56198] 2017/04/01 09:38:37.131509 [INF] STREAM: ---------- Store Limits ----------
-[56198] 2017/04/01 09:38:37.131517 [INF] STREAM: Channels:                   10
-[56198] 2017/04/01 09:38:37.131520 [INF] STREAM: --------- channels limits --------
-[56198] 2017/04/01 09:38:37.131526 [INF] STREAM:   Subscriptions:          1000 *
-[56198] 2017/04/01 09:38:37.131530 [INF] STREAM:   Messages     :         10000
-[56198] 2017/04/01 09:38:37.131549 [INF] STREAM:   Bytes        :      10.00 MB
-[56198] 2017/04/01 09:38:37.131573 [INF] STREAM:   Age          :        1h0m0s
-[56198] 2017/04/01 09:38:37.131578 [INF] STREAM: -------- list of channels --------
-[56198] 2017/04/01 09:38:37.131586 [INF] STREAM: "foo"
-[56198] 2017/04/01 09:38:37.131590 [INF] STREAM:  |-> Subscriptions:            50
-[56198] 2017/04/01 09:38:37.131593 [INF] STREAM:  |-> Messages     :           300
-[56198] 2017/04/01 09:38:37.131603 [INF] STREAM: "bar"
-[56198] 2017/04/01 09:38:37.131607 [INF] STREAM:  |-> Messages     :            50
-[56198] 2017/04/01 09:38:37.131611 [INF] STREAM:  |-> Bytes        :        1000 B
-[56198] 2017/04/01 09:38:37.131614 [INF] STREAM: "baz"
-[56198] 2017/04/01 09:38:37.131618 [INF] STREAM: ----------------------------------
+[98977] 2017/04/14 19:19:13.289384 [INF] STREAM: ---------- Store Limits ----------
+[98977] 2017/04/14 19:19:13.289393 [INF] STREAM: Channels:                   10
+[98977] 2017/04/14 19:19:13.289396 [INF] STREAM: --------- channels limits --------
+[98977] 2017/04/14 19:19:13.289402 [INF] STREAM:   Subscriptions:          1000 *
+[98977] 2017/04/14 19:19:13.289407 [INF] STREAM:   Messages     :         10000
+[98977] 2017/04/14 19:19:13.289431 [INF] STREAM:   Bytes        :      10.00 MB
+[98977] 2017/04/14 19:19:13.289446 [INF] STREAM:   Age          :        1h0m0s
+[98977] 2017/04/14 19:19:13.289450 [INF] STREAM: -------- list of channels --------
+[98977] 2017/04/14 19:19:13.289461 [INF] STREAM: "foo"
+[98977] 2017/04/14 19:19:13.289465 [INF] STREAM:  |-> Subscriptions:            50
+[98977] 2017/04/14 19:19:13.289468 [INF] STREAM:  |-> Messages     :           300
+[98977] 2017/04/14 19:19:13.289476 [INF] STREAM: "bar"
+[98977] 2017/04/14 19:19:13.289479 [INF] STREAM:  |-> Messages     :            50
+[98977] 2017/04/14 19:19:13.289483 [INF] STREAM:  |-> Bytes        :       1.00 KB
+[98977] 2017/04/14 19:19:13.289491 [INF] STREAM: "baz"
+[98977] 2017/04/14 19:19:13.289495 [INF] STREAM:  |-> Messages     :     unlimited
+[98977] 2017/04/14 19:19:13.289498 [INF] STREAM:  |-> Bytes        :       1.00 MB
+[98977] 2017/04/14 19:19:13.289502 [INF] STREAM:  |-> Age          :        2h0m0s
+[98977] 2017/04/14 19:19:13.289506 [INF] STREAM: "bozo"
+[98977] 2017/04/14 19:19:13.289509 [INF] STREAM: ----------------------------------
 ```
 
 

@@ -262,6 +262,21 @@ func TestIsSubjectValid(t *testing.T) {
 	}
 }
 
+func TestIsSubjectLiteral(t *testing.T) {
+	subjects := []string{"foo.*", "foo.>", "foo.*.bar", "foo.bar.*"}
+	for _, s := range subjects {
+		if IsSubjectLiteral(s) {
+			t.Fatalf("IsSubjectLiteral for %q should have returned false", s)
+		}
+	}
+	subjects = []string{"foo.bar", "foo.baz", "foo.baz.bar", "foo.bar.baz"}
+	for _, s := range subjects {
+		if !IsSubjectLiteral(s) {
+			t.Fatalf("IsSubjectLiteral for %q should have returned true", s)
+		}
+	}
+}
+
 func TestFriendlyBytes(t *testing.T) {
 	check := func(val int64, expectedSuffix string) {
 		res := FriendlyBytes(val)

@@ -1124,21 +1124,21 @@ func (s *StanServer) start(runningState State) error {
 	return nil
 }
 func printGlobalLimits(limits *stores.ChannelLimits) {
-	parentLimits := &stores.DefaultStoreLimits
-	plMaxSubs := int64(parentLimits.MaxSubscriptions)
-	plMaxMsgs := int64(parentLimits.MaxMsgs)
-	plMaxBytes := parentLimits.MaxBytes
-	plMaxAge := parentLimits.MaxAge
-	Noticef("  Subscriptions: %s", getLimitStr(true, int64(limits.MaxSubscriptions), plMaxSubs, limitCount))
-	Noticef("  Messages     : %s", getLimitStr(true, int64(limits.MaxMsgs), plMaxMsgs, limitCount))
-	Noticef("  Bytes        : %s", getLimitStr(true, limits.MaxBytes, plMaxBytes, limitBytes))
-	Noticef("  Age          : %s", getLimitStr(true, int64(limits.MaxAge), int64(plMaxAge), limitDuration))
+	defaultLimits := &stores.DefaultStoreLimits
+	defMaxSubs := int64(defaultLimits.MaxSubscriptions)
+	defMaxMsgs := int64(defaultLimits.MaxMsgs)
+	defMaxBytes := defaultLimits.MaxBytes
+	defMaxAge := defaultLimits.MaxAge
+	Noticef("  Subscriptions: %s", getLimitStr(true, int64(limits.MaxSubscriptions), defMaxSubs, limitCount))
+	Noticef("  Messages     : %s", getLimitStr(true, int64(limits.MaxMsgs), defMaxMsgs, limitCount))
+	Noticef("  Bytes        : %s", getLimitStr(true, limits.MaxBytes, defMaxBytes, limitBytes))
+	Noticef("  Age          : %s", getLimitStr(true, int64(limits.MaxAge), int64(defMaxAge), limitDuration))
 }
 
 func getLimitStr(isGlobal bool, val, parentVal int64, limitType int) string {
 	valStr := ""
 	inherited := ""
-	if !isGlobal && (val == 0 || val == parentVal) {
+	if !isGlobal && (val == parentVal) {
 		return ""
 	}
 	if val == parentVal {

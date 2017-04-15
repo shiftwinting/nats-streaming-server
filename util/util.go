@@ -147,28 +147,40 @@ func CloseFile(err error, f io.Closer) error {
 // - '*' or '>' are not a token in their own
 // - `>` is not the last token
 func IsSubjectValid(subject string, wildcardsAllowed bool) bool {
-	if subject == "" || subject[0] == '.' {
+	if subject == "" || subject[0] == btsep {
 		return false
 	}
 	for i := 0; i < len(subject); i++ {
 		c := subject[i]
-		if (c == '.') && (i == len(subject)-1 || subject[i+1] == '.') {
+		if (c == btsep) && (i == len(subject)-1 || subject[i+1] == btsep) {
 			return false
 		}
 		if !wildcardsAllowed {
-			if c == '*' || c == '>' {
+			if c == pwc || c == fwc {
 				return false
 			}
-		} else if c == '*' || c == '>' {
-			if i > 0 && subject[i-1] != '.' {
+		} else if c == pwc || c == fwc {
+			if i > 0 && subject[i-1] != btsep {
 				return false
 			}
-			if c == '>' && i != len(subject)-1 {
+			if c == fwc && i != len(subject)-1 {
 				return false
 			}
-			if i < len(subject)-1 && subject[i+1] != '.' {
+			if i < len(subject)-1 && subject[i+1] != btsep {
 				return false
 			}
+		}
+	}
+	return true
+}
+
+// IsSubjectLiteral returns true if the subject is a literal (that is,
+// it does not contain any wildcard).
+// The subject is assumed to be valid.
+func IsSubjectLiteral(subject string) bool {
+	for i := 0; i < len(subject); i++ {
+		if subject[i] == pwc || subject[i] == fwc {
+			return false
 		}
 	}
 	return true

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestAddPerChannel(t *testing.T) {
+func TestLimitsAddPerChannel(t *testing.T) {
 	sl := testDefaultStoreLimits
 	cl := &ChannelLimits{
 		MsgStoreLimits{
@@ -35,7 +35,7 @@ func TestAddPerChannel(t *testing.T) {
 	}
 }
 
-func TestBuildErrors(t *testing.T) {
+func TestLimitsBuildErrors(t *testing.T) {
 	sl := testDefaultStoreLimits
 
 	// This function calls Build(), expects and error and check
@@ -110,7 +110,7 @@ func TestBuildErrors(t *testing.T) {
 	expectError("invalid channel name")
 }
 
-func TestAppliedInheritance(t *testing.T) {
+func TestLimitsAppliedInheritance(t *testing.T) {
 	sl := testDefaultStoreLimits
 	sl.MaxMsgs = 11
 	sl.MaxBytes = 12
@@ -188,5 +188,24 @@ func TestLimitsUnlimited(t *testing.T) {
 	expected := ChannelLimits{}
 	if !reflect.DeepEqual(*builtCl, expected) {
 		t.Fatalf("Expected limits to be %v, got %v", expected, *builtCl)
+	}
+}
+
+func TestLimitsWildcardsDontCountForMaxChannels(t *testing.T) {
+	sl := testDefaultStoreLimits
+	sl.MaxChannels = 2
+	sl.AddPerChannel("foo.>", &ChannelLimits{})
+	sl.AddPerChannel("foo.*.*", &ChannelLimits{})
+	sl.AddPerChannel("foo.*", &ChannelLimits{})
+	sl.AddPerChannel("foo.bar", &ChannelLimits{})
+	sl.AddPerChannel("foo.baz", &ChannelLimits{})
+	if err := sl.Build(); err != nil {
+		t.Fatalf("Build should not have failed: %v", err)
+	}
+	// Add 1 more literal channel
+	sl.AddPerChannel("foo.baz.biz", &ChannelLimits{})
+	// Now this should fail
+	if err := sl.Build(); err == nil {
+		t.Fatal("Build should have failed")
 	}
 }
