@@ -3,8 +3,6 @@
 package server
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"strings"
 	"sync"
@@ -108,6 +106,10 @@ func TestPartitionsInvalidRequest(t *testing.T) {
 		}
 	}
 
+	// Send message without Reply
+	nc.Publish(subj, []byte("hello"))
+	verifyNoResponse()
+
 	// Send request with empty body.
 	nc.PublishRequest(subj, inbox, nil)
 	verifyNoResponse()
@@ -116,17 +118,18 @@ func TestPartitionsInvalidRequest(t *testing.T) {
 	nc.PublishRequest(subj, inbox, []byte("hello"))
 	verifyNoResponse()
 
-	// Send request without Reply, the request should not be processed.
+	// Send invalid data for the channels encoding
 	req := &spb.CtrlMsg{
 		ServerID: "otherserver",
 		MsgType:  spb.CtrlMsg_Partitioning,
 		Data:     []byte{1, 2, 3, 4, 5},
 	}
 	reqBytes, _ := req.Marshal()
-	nc.Publish(subj, reqBytes)
+	nc.PublishRequest(subj, inbox, reqBytes)
 	verifyNoResponse()
 
-	// Invalid Data in valid request protocol.
+	req.Data = []byte{1}
+	reqBytes, _ = req.Marshal()
 	nc.PublishRequest(subj, inbox, reqBytes)
 	verifyNoResponse()
 }
@@ -138,11 +141,31 @@ func TestPartitionsMaxPayload(t *testing.T) {
 	// For this test, both server will connect to same NATS Server
 	ncOpts := natsdTest.DefaultTestOptions
 	// Change MaxPayload
-	ncOpts.MaxPayload = 100
+	ncOpts.MaxPayload = 50
 	ns := natsdTest.RunServer(&ncOpts)
 	defer ns.Shutdown()
 
 	opts1 := GetDefaultOptions()
+	opts1.NATSServerURL = "nats://localhost:4222"
+	opts1.Partitioning = true
+	opts1.StoreLimits.AddPerChannel("foofoofoofoofoofoofoofoofoofoofoofoofoofoofoofoofoofoo", &stores.ChannelLimits{})
+	failSrv, err := RunServerWithOpts(opts1, nil)
+	if failSrv != nil {
+		failSrv.Shutdown()
+	}
+	// It should fail since we would not be able to send a single channel
+	// due to MaxPayload restrictions.
+	if err == nil {
+		t.Fatal("Should have failed")
+	}
+	ns.Shutdown()
+
+	// Change MaxPayload
+	ncOpts.MaxPayload = 100
+	ns = natsdTest.RunServer(&ncOpts)
+	defer ns.Shutdown()
+
+	opts1 = GetDefaultOptions()
 	opts1.NATSServerURL = "nats://localhost:4222"
 	opts1.Partitioning = true
 	opts1.StoreLimits.AddPerChannel("foo", &stores.ChannelLimits{})
@@ -163,10 +186,7 @@ func TestPartitionsMaxPayload(t *testing.T) {
 	cb := func(m *nats.Msg) {
 		req := &spb.CtrlMsg{}
 		req.Unmarshal(m.Data)
-		channels := []string{}
-		buf := &bytes.Buffer{}
-		buf.Write(req.Data)
-		gob.NewDecoder(buf).Decode(&channels)
+		channels, _ := decodeChannels(req.Data)
 		for _, c := range channels {
 			verifyChannels[c] = struct{}{}
 			count++
@@ -425,10 +445,7 @@ func TestPartitionsSendListAfterRouteEstablished(t *testing.T) {
 		return func(m *nats.Msg) {
 			req := &spb.CtrlMsg{}
 			req.Unmarshal(m.Data)
-			channels := []string{}
-			buf := &bytes.Buffer{}
-			buf.Write(req.Data)
-			gob.NewDecoder(buf).Decode(&channels)
+			channels, _ := decodeChannels(req.Data)
 			for _, c := range channels {
 				mu.Lock()
 				if c == "foo" && *s != nil && req.ServerID == (*s).serverID {

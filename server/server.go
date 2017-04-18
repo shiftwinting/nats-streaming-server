@@ -959,7 +959,7 @@ func RunServerWithOpts(stanOpts *Options, natsOpts *server.Options) (newServer *
 		return nil, err
 	}
 
-	// If using static channels, try our best to find out that on startup that
+	// If using partitioning, try our best to find out that on startup that
 	// no other server with same cluster ID has any channel that we own.
 	if sOpts.Partitioning {
 		if err := s.initPartitions(sOpts, nOpts, limits.PerChannel); err != nil {
@@ -1069,7 +1069,7 @@ func (s *StanServer) start(runningState State) error {
 
 	// We don't do the check if we are running FT and/or if
 	// static channels (partitioning) is in play.
-	if runningState == Standalone && !s.opts.Partitioning {
+	if runningState == Standalone && s.partitions == nil {
 		if err := s.ensureRunningStandAlone(); err != nil {
 			return err
 		}

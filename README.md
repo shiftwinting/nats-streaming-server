@@ -75,7 +75,7 @@ This detail is important when it comes to Streaming clients connections to the S
 connection, the server knows if a client is connected based on heartbeats.
 
 ***It is therefore strongly recommended for clients to close their connection when the application exit, otherwise the server
-will consider these clients connected (sending data, etc...) until it detects missing hearbeats.***
+will consider these clients connected (sending data, etc...) until it detects missing heartbeats.***
 
 The streaming server creates internal subscriptions on specific subjects to communicate with its clients and/or other servers.
 
@@ -110,7 +110,7 @@ in a message log inside this channel.
 
 ### Message Log
 
-You can view a message log as a ring buffer. Messages are appended to the end of the log. If a limit is set gobally for all channels, or specifically for this channel, when the limit is reached, older messages are removed to make room for the new ones.
+You can view a message log as a ring buffer. Messages are appended to the end of the log. If a limit is set globally for all channels, or specifically for this channel, when the limit is reached, older messages are removed to make room for the new ones.
 
 But except for the administrative size/age limit set for a message log, messages are not removed due to consumers consuming them.
 In fact, messages are stored regardless of the presence of subscriptions on that channel.
@@ -196,7 +196,7 @@ because when the server runs on Fault Tolerance mode, the storage must be shared
 using it.
 
 After instantiating the store, the server will then call `Recover()` in order to recover the persisted state. For implementations
-that do not support persitence, such as the provided `MemoryStore`, this call will simply return `nil` (without error) to
+that do not support persistence, such as the provided `MemoryStore`, this call will simply return `nil` (without error) to
 indicate that no state was recovered.
 
 The `Store` is used to add/delete clients, create/lookup channels, etc...
@@ -243,7 +243,7 @@ elected server fails to grab this lock because it is already locked, it will go 
 
 ### Standby servers
 
-There can be as many as you want standby servers on the same group. These servers do not access the store and do not receive any data from the streaming clients. They are just running waiting for the detectiong of the active server failure.
+There can be as many as you want standby servers on the same group. These servers do not access the store and do not receive any data from the streaming clients. They are just running waiting for the detection of the active server failure.
 
 ### Shared State
 
@@ -331,7 +331,7 @@ When a server starts, it sends its list of channels to all other servers on the 
 to detect duplicate channels. When a server receives this list and finds that it has a channel in
 common, it will return an error to the emitting server, which will then fail to start.
 
-However, on startup, it is possible that the undelying NATS cluster is not fully formed. The server would
+However, on startup, it is possible that the underlying NATS cluster is not fully formed. The server would
 not get any response from the rest of the cluster and therefore start successfully and service clients.
 Anytime a Streaming server detects that a NATS server was added to the NATS cluster, it will resend its list
 of channels. It means that currently running servers may suddenly fail with a message regarding duplicate channels.
@@ -344,7 +344,7 @@ of the administrator to ensure that channels are unique.***
 
 ### Fault Tolerance and Partitioning
 
-You can easily combine the Fault Tolerance and Partioning feature.
+You can easily combine the Fault Tolerance and Partitioning feature.
 
 To illustrate, suppose that we want two partitions, one for `foo.>` and one for `bar.>`.
 
@@ -371,7 +371,7 @@ store_limits: {
 If you remember, Fault Tolerance is configured by specifying a name (`ft_group_name`). Suppose there is
 an NFS mount called `/nss/datastore` on both `host1` and `host2`.
 
-Starting an FT pair for the partion `foo` could look like this:
+Starting an FT pair for the partition `foo` could look like this:
 ```
 host1$ nats-streaming-server -store file -dir /nss/datastore/foodata -sc foo.conf -ft_group_name foo -cluster nats://host1:6222 -routes nats://host2:6222,nats://host2:6223
 
