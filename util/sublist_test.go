@@ -4,6 +4,8 @@ package util
 
 import (
 	"fmt"
+	"math/rand"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -36,9 +38,20 @@ func verifyMember(r []interface{}, val interface{}, t *testing.T) {
 }
 
 func verifyNumLevels(s *Sublist, expected int, t *testing.T) {
-	dl := s.numLevels()
+	dl := s.NumLevels()
 	if dl != expected {
 		stackFatalf(t, "NumLevels is %d, should be %d", dl, expected)
+	}
+}
+
+func checkOrder(t *testing.T, r []interface{}, expectedVals ...interface{}) {
+	if len(expectedVals) != len(r) {
+		stackFatalf(t, "Expected %v values, got %v", len(expectedVals), len(r))
+	}
+	for i := 0; i < len(r); i++ {
+		if !reflect.DeepEqual(r[i], expectedVals[i]) {
+			stackFatalf(t, "Expected %v, got %v", expectedVals, r)
+		}
 	}
 }
 
@@ -85,9 +98,7 @@ func TestSublistPartialWildcard(t *testing.T) {
 	s.Insert(literalSubj, val1)
 	s.Insert(wildcardSubj, val2)
 	r := s.Match(literalSubj)
-	verifyLen(r, 2, t)
-	verifyMember(r, val1, t)
-	verifyMember(r, val2, t)
+	checkOrder(t, r, val2, val1)
 }
 
 func TestSublistPartialWildcardAtEnd(t *testing.T) {
@@ -99,9 +110,7 @@ func TestSublistPartialWildcardAtEnd(t *testing.T) {
 	s.Insert(literalSubj, val1)
 	s.Insert(wildcardSubj, val2)
 	r := s.Match("a.b.c")
-	verifyLen(r, 2, t)
-	verifyMember(r, val1, t)
-	verifyMember(r, val2, t)
+	checkOrder(t, r, val2, val1)
 }
 
 func TestSublistFullWildcard(t *testing.T) {
@@ -113,9 +122,7 @@ func TestSublistFullWildcard(t *testing.T) {
 	s.Insert(literalSubj, val1)
 	s.Insert(wildcardSubj, val2)
 	r := s.Match("a.b.c")
-	verifyLen(r, 2, t)
-	verifyMember(r, val1, t)
-	verifyMember(r, val2, t)
+	checkOrder(t, r, val2, val1)
 }
 
 func TestSublistRemove(t *testing.T) {
@@ -359,5 +366,32 @@ func TestSublistShrink(t *testing.T) {
 	s.RUnlock()
 	if newCapacity >= capacity {
 		t.Fatalf("Capacity should have decreased, got %v", newCapacity)
+	}
+}
+
+func TestSublistSubjects(t *testing.T) {
+	subjects := []string{"*.*", "foo.>", "*.>", ">", "foo.*.>", "bar.>", "foo.bar.>", "bar.baz"}
+	pOne := []string{">", "*.>", "*.*", "foo.>", "foo.*.>", "foo.bar.>", "bar.>", "bar.baz"}
+	pTwo := []string{">", "*.>", "*.*", "bar.>", "bar.baz", "foo.>", "foo.*.>", "foo.bar.>"}
+
+	for i := 0; i < 1000; i++ {
+		randomized := rand.Perm(len(subjects))
+		randSubjects := make([]string, len(subjects))
+		for j := 0; j < len(subjects); j++ {
+			randSubjects[j] = subjects[randomized[j]]
+		}
+		s := NewSublist()
+		for _, subj := range randSubjects {
+			if err := s.Insert(subj, subj); err != nil {
+				t.Fatalf("Error inserting in sublist: %v", err)
+			}
+		}
+		r := s.Subjects()
+		if len(r) != len(subjects) {
+			t.Fatalf("Expected Subjects to return %v subjects, got %v", len(subjects), len(r))
+		}
+		if !reflect.DeepEqual(r, pOne) && !reflect.DeepEqual(r, pTwo) {
+			t.Fatalf("Result expected to be either %v or %v, got %v", pOne, pTwo, r)
+		}
 	}
 }

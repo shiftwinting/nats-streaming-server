@@ -14,7 +14,9 @@ import (
 // Common byte variables for wildcards and token separator.
 const (
 	pwc   = '*'
+	spwc  = "*"
 	fwc   = '>'
+	sfwc  = ">"
 	tsep  = "."
 	btsep = '.'
 )
@@ -206,11 +208,11 @@ func matchLevel(l *level, toks []string, results *[]interface{}) {
 			l = nil
 		}
 	}
-	if n != nil {
-		*results = append(*results, n.elements...)
-	}
 	if pwc != nil {
 		*results = append(*results, pwc.elements...)
+	}
+	if n != nil {
+		*results = append(*results, n.elements...)
 	}
 }
 
@@ -406,9 +408,8 @@ func matchLiteral(literal, subject string) bool {
 	return li >= ll
 }
 
-// numLevels will return the maximum number of levels
-// contained in the Sublist tree.
-func (s *Sublist) numLevels() int {
+// NumLevels returns the maximum number of levels in the sublist.
+func (s *Sublist) NumLevels() int {
 	return visitLevel(s.root, 0)
 }
 
@@ -444,4 +445,66 @@ func visitLevel(l *level, depth int) int {
 		}
 	}
 	return maxDepth
+}
+
+// Subjects returns an array of all subjects in this sublist
+// ordered from the widest to the narrowest of subjects.
+// Order between non wildcard tokens in a given level is
+// random though.
+//
+// For instance, if the sublist contains (in any inserted order):
+//
+// *.*, foo.>, *.>, foo.*.>, >, bar.>, foo.bar.>, bar.baz
+//
+// the returned array will be one of the two possibilities:
+//
+// >, *.>, *.*, foo.>, foo.*.>, foo.bar.>, bar.>, bar.baz
+//
+// or
+//
+// >, *.>, *.*, bar.>, bar.baz, foo.>, foo.*.>, foo.bar.>
+//
+// For a given level, the order will still always be from
+// wider to narrower, that is, foo.> comes before foo.*.>
+// which comes before foo.bar.>, and bar.> always comes
+// before bar.baz, but all the "bar" subjects may be
+// before or after all the "foo" subjects.
+func (s *Sublist) Subjects() []string {
+	s.RLock()
+	defer s.RUnlock()
+	subjects := make([]string, 0, s.count)
+	getSubjects(s.root, "", &subjects)
+	return subjects
+}
+
+func getSubjects(l *level, subject string, res *[]string) {
+	if l == nil || l.numNodes() == 0 {
+		*res = append(*res, subject)
+		return
+	}
+	var fs string
+	if l.fwc != nil {
+		if subject != "" {
+			fs = subject + tsep + sfwc
+		} else {
+			fs = sfwc
+		}
+		getSubjects(l.fwc.next, fs, res)
+	}
+	if l.pwc != nil {
+		if subject != "" {
+			fs = subject + tsep + spwc
+		} else {
+			fs = spwc
+		}
+		getSubjects(l.pwc.next, fs, res)
+	}
+	for s, n := range l.nodes {
+		if subject != "" {
+			fs = subject + tsep + s
+		} else {
+			fs = s
+		}
+		getSubjects(n.next, fs, res)
+	}
 }

@@ -799,6 +799,20 @@ store_limits: {
         # When using partitioning, channels need to be listed.
         # They don't have to override any limit.
         "bozo": {}
+
+        # Wildcards are possible in configuration. This says that any channel
+        # that will start with "foo" but with at least 2 tokens, will be
+        # able to store 400 messages. Other limits are inherited from global.
+        "foo.>": {
+            max_msgs:400
+        }
+        # This one says that if the channel name starts with "foo.bar" but has
+        # at least one more token, the sever will hold it for 2 hours instead
+        # of one. The max number of messages is inherited from "foo.>", so the
+        # limit will be 400. All other limits are inherited from global.
+        "foo.bar.>": {
+            max_age: "2h"
+        }
     }
 }
 ...
@@ -836,30 +850,39 @@ On startup the server displays the store limits. Notice the `*` at the right of 
 limit to indicate that the limit was inherited from the default store limits.
 
 For channels that have been configured, their name is displayed and only the
-limits being specifically set are displayed to minimize the output.<br>
-This is what would be displayed with the above store limits configuration:
+limits being specifically set are displayed to minimize the output.
+
+#### Wildcards
+
+Wildcards are allowed for channels configuration. Limits for `foo.>`
+will apply to any channel that starts with `foo` (but has at least one more token).
+If `foo.bar.>` is specified, it will inherit from `foo.>` and from global limits.
+
+Below is what would be displayed with the above store limits configuration. Notice
+how `foo.bar.>` is indented compared to `foo.>` to show the inheritance.
 
 ```
-[98977] 2017/04/14 19:19:13.289384 [INF] STREAM: ---------- Store Limits ----------
-[98977] 2017/04/14 19:19:13.289393 [INF] STREAM: Channels:                   10
-[98977] 2017/04/14 19:19:13.289396 [INF] STREAM: --------- channels limits --------
-[98977] 2017/04/14 19:19:13.289402 [INF] STREAM:   Subscriptions:          1000 *
-[98977] 2017/04/14 19:19:13.289407 [INF] STREAM:   Messages     :         10000
-[98977] 2017/04/14 19:19:13.289431 [INF] STREAM:   Bytes        :      10.00 MB
-[98977] 2017/04/14 19:19:13.289446 [INF] STREAM:   Age          :        1h0m0s
-[98977] 2017/04/14 19:19:13.289450 [INF] STREAM: -------- list of channels --------
-[98977] 2017/04/14 19:19:13.289461 [INF] STREAM: "foo"
-[98977] 2017/04/14 19:19:13.289465 [INF] STREAM:  |-> Subscriptions:            50
-[98977] 2017/04/14 19:19:13.289468 [INF] STREAM:  |-> Messages     :           300
-[98977] 2017/04/14 19:19:13.289476 [INF] STREAM: "bar"
-[98977] 2017/04/14 19:19:13.289479 [INF] STREAM:  |-> Messages     :            50
-[98977] 2017/04/14 19:19:13.289483 [INF] STREAM:  |-> Bytes        :       1.00 KB
-[98977] 2017/04/14 19:19:13.289491 [INF] STREAM: "baz"
-[98977] 2017/04/14 19:19:13.289495 [INF] STREAM:  |-> Messages     :     unlimited
-[98977] 2017/04/14 19:19:13.289498 [INF] STREAM:  |-> Bytes        :       1.00 MB
-[98977] 2017/04/14 19:19:13.289502 [INF] STREAM:  |-> Age          :        2h0m0s
-[98977] 2017/04/14 19:19:13.289506 [INF] STREAM: "bozo"
-[98977] 2017/04/14 19:19:13.289509 [INF] STREAM: ----------------------------------
+[63762] 2017/04/19 14:47:36.149341 [INF] STREAM: ---------- Store Limits ----------
+[63762] 2017/04/19 14:47:36.149352 [INF] STREAM: Channels:                   10
+[63762] 2017/04/19 14:47:36.149355 [INF] STREAM: --------- Channels Limits --------
+[63762] 2017/04/19 14:47:36.149359 [INF] STREAM:   Subscriptions:          1000 *
+[63762] 2017/04/19 14:47:36.149362 [INF] STREAM:   Messages     :         10000
+[63762] 2017/04/19 14:47:36.149365 [INF] STREAM:   Bytes        :      10.00 MB
+[63762] 2017/04/19 14:47:36.149368 [INF] STREAM:   Age          :        1h0m0s
+[63762] 2017/04/19 14:47:36.149371 [INF] STREAM: -------- List of Channels ---------
+[63762] 2017/04/19 14:47:36.149374 [INF] STREAM: foo.>
+[63762] 2017/04/19 14:47:36.149378 [INF] STREAM:  |-> Messages                   400
+[63762] 2017/04/19 14:47:36.149383 [INF] STREAM:  foo.bar.>
+[63762] 2017/04/19 14:47:36.149387 [INF] STREAM:   |-> Age                    2h0m0s
+[63762] 2017/04/19 14:47:36.149390 [INF] STREAM: bar
+[63762] 2017/04/19 14:47:36.149393 [INF] STREAM:  |-> Messages                    50
+[63762] 2017/04/19 14:47:36.149572 [INF] STREAM:  |-> Bytes                  1.00 KB
+[63762] 2017/04/19 14:47:36.149581 [INF] STREAM: baz
+[63762] 2017/04/19 14:47:36.149585 [INF] STREAM:  |-> Messages             unlimited
+[63762] 2017/04/19 14:47:36.149589 [INF] STREAM:  |-> Bytes                  1.00 MB
+[63762] 2017/04/19 14:47:36.149592 [INF] STREAM:  |-> Age                     2h0m0s
+[63762] 2017/04/19 14:47:36.149595 [INF] STREAM: bozo
+[63762] 2017/04/19 14:47:36.149599 [INF] STREAM: -----------------------------------
 ```
 
 

@@ -96,13 +96,6 @@ const (
 	honorMaxInFlight = false
 )
 
-// Used for display of limits
-const (
-	limitCount = iota
-	limitBytes
-	limitDuration
-)
-
 // Errors.
 var (
 	ErrInvalidSubject     = errors.New("stan: invalid subject")
@@ -1101,20 +1094,10 @@ func (s *StanServer) start(runningState State) error {
 	}
 
 	Noticef("Message store is %s", s.store.Name())
-	Noticef("---------- Store Limits ----------")
-	Noticef("Channels:        %s",
-		getLimitStr(true, int64(limits.MaxChannels),
-			int64(stores.DefaultStoreLimits.MaxChannels),
-			limitCount))
-	Noticef("--------- channels limits --------")
-	printGlobalLimits(&limits.ChannelLimits)
-	if len(limits.PerChannel) > 0 {
-		Noticef("-------- list of channels --------")
-		for cn, cl := range limits.PerChannel {
-			printChannel(cn, cl, &limits.ChannelLimits)
-		}
+	storeLimitsLines := limits.Print()
+	for _, l := range storeLimitsLines {
+		Noticef(l)
 	}
-	Noticef("----------------------------------")
 
 	// Execute (in a go routine) redelivery of unacknowledged messages,
 	// and release newOnHold
@@ -1122,65 +1105,6 @@ func (s *StanServer) start(runningState State) error {
 	go s.performRedeliveryOnStartup(recoveredSubs)
 	s.state = runningState
 	return nil
-}
-func printGlobalLimits(limits *stores.ChannelLimits) {
-	defaultLimits := &stores.DefaultStoreLimits
-	defMaxSubs := int64(defaultLimits.MaxSubscriptions)
-	defMaxMsgs := int64(defaultLimits.MaxMsgs)
-	defMaxBytes := defaultLimits.MaxBytes
-	defMaxAge := defaultLimits.MaxAge
-	Noticef("  Subscriptions: %s", getLimitStr(true, int64(limits.MaxSubscriptions), defMaxSubs, limitCount))
-	Noticef("  Messages     : %s", getLimitStr(true, int64(limits.MaxMsgs), defMaxMsgs, limitCount))
-	Noticef("  Bytes        : %s", getLimitStr(true, limits.MaxBytes, defMaxBytes, limitBytes))
-	Noticef("  Age          : %s", getLimitStr(true, int64(limits.MaxAge), int64(defMaxAge), limitDuration))
-}
-
-func getLimitStr(isGlobal bool, val, parentVal int64, limitType int) string {
-	valStr := ""
-	inherited := ""
-	if !isGlobal && (val == parentVal) {
-		return ""
-	}
-	if val == parentVal {
-		inherited = " *"
-	}
-	if val == 0 {
-		valStr = "unlimited"
-	} else {
-		switch limitType {
-		case limitBytes:
-			valStr = util.FriendlyBytes(val)
-		case limitDuration:
-			valStr = fmt.Sprintf("%v", time.Duration(val))
-		default:
-			valStr = fmt.Sprintf("%v", val)
-		}
-	}
-	return fmt.Sprintf("%13s%s", valStr, inherited)
-}
-
-func printChannel(channelName string, limits, parentLimits *stores.ChannelLimits) {
-	plMaxSubs := int64(parentLimits.MaxSubscriptions)
-	plMaxMsgs := int64(parentLimits.MaxMsgs)
-	plMaxBytes := parentLimits.MaxBytes
-	plMaxAge := parentLimits.MaxAge
-	maxSubsOverride := getLimitStr(false, int64(limits.MaxSubscriptions), plMaxSubs, limitCount)
-	maxMsgsOverride := getLimitStr(false, int64(limits.MaxMsgs), plMaxMsgs, limitCount)
-	maxBytesOverride := getLimitStr(false, limits.MaxBytes, plMaxBytes, limitBytes)
-	maxAgeOverride := getLimitStr(false, int64(limits.MaxAge), int64(plMaxAge), limitDuration)
-	Noticef("%q", channelName)
-	if maxSubsOverride != "" {
-		Noticef(" |-> Subscriptions: %s", maxSubsOverride)
-	}
-	if maxMsgsOverride != "" {
-		Noticef(" |-> Messages     : %s", maxMsgsOverride)
-	}
-	if maxBytesOverride != "" {
-		Noticef(" |-> Bytes        : %s", maxBytesOverride)
-	}
-	if maxAgeOverride != "" {
-		Noticef(" |-> Age          : %s", maxAgeOverride)
-	}
 }
 
 // TODO:  Explore parameter passing in gnatsd.  Keep separate for now.
