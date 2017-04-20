@@ -261,3 +261,9 @@ func TestMSNegativeLimits(t *testing.T) {
 
 	testNegativeLimit(t, ms)
 }
+
+func TestMSLimitWithWildcardsInConfig(t *testing.T) {
+	ms := createDefaultMemStore(t)
+	defer ms.Close()
+	testLimitWithWildcardsInConfig(t, ms)
+}

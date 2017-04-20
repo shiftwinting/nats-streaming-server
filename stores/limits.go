@@ -63,6 +63,7 @@ func (sl *StoreLimits) Build() error {
 			}
 		}
 		cli := &channelLimitInfo{
+			name:      cn,
 			limits:    cl,
 			isLiteral: isLiteral,
 		}

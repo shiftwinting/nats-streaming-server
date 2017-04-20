@@ -1115,12 +1115,14 @@ func (fs *FileStore) Recover() (*RecoveredState, error) {
 		channel := c.Name()
 		channelDirName := filepath.Join(fs.fm.rootDir, channel)
 
+		limits := fs.genericStore.getChannelLimits(channel)
+
 		// Recover messages for this channel
-		msgStore, err = fs.newFileMsgStore(channelDirName, channel, true)
+		msgStore, err = fs.newFileMsgStore(channelDirName, channel, &limits.MsgStoreLimits, true)
 		if err != nil {
 			break
 		}
-		subStore, err = fs.newFileSubStore(channel, true)
+		subStore, err = fs.newFileSubStore(channel, &limits.SubStoreLimits, true)
 		if err != nil {
 			msgStore.Close()
 			break
@@ -1328,11 +1330,13 @@ func (fs *FileStore) CreateChannel(channel string, userData interface{}) (*Chann
 	var msgStore MsgStore
 	var subStore SubStore
 
-	msgStore, err = fs.newFileMsgStore(channelDirName, channel, false)
+	channelLimits := fs.genericStore.getChannelLimits(channel)
+
+	msgStore, err = fs.newFileMsgStore(channelDirName, channel, &channelLimits.MsgStoreLimits, false)
 	if err != nil {
 		return nil, false, err
 	}
-	subStore, err = fs.newFileSubStore(channel, false)
+	subStore, err = fs.newFileSubStore(channel, &channelLimits.SubStoreLimits, false)
 	if err != nil {
 		msgStore.Close()
 		return nil, false, err
@@ -1521,7 +1525,7 @@ func (fs *FileStore) Close() error {
 ////////////////////////////////////////////////////////////////////////////
 
 // newFileMsgStore returns a new instace of a file MsgStore.
-func (fs *FileStore) newFileMsgStore(channelDirName, channel string, doRecover bool) (*FileMsgStore, error) {
+func (fs *FileStore) newFileMsgStore(channelDirName, channel string, limits *MsgStoreLimits, doRecover bool) (*FileMsgStore, error) {
 	// Create an instance and initialize
 	ms := &FileMsgStore{
 		fm:           fs.fm,
@@ -1533,15 +1537,7 @@ func (fs *FileStore) newFileMsgStore(channelDirName, channel string, doRecover b
 		bkgTasksDone: make(chan bool, 1),
 		bkgTasksWake: make(chan bool, 1),
 	}
-	// Defaults to the global limits
-	msgStoreLimits := fs.limits.MsgStoreLimits
-	// See if there is an override
-	thisChannelLimits, exists := fs.limits.PerChannel[channel]
-	if exists {
-		// Use this channel specific limits
-		msgStoreLimits = thisChannelLimits.MsgStoreLimits
-	}
-	ms.init(channel, &msgStoreLimits)
+	ms.init(channel, limits)
 
 	ms.setSliceLimits()
 	ms.initCache()
@@ -2889,22 +2885,14 @@ func (ms *FileMsgStore) Flush() error {
 ////////////////////////////////////////////////////////////////////////////
 
 // newFileSubStore returns a new instace of a file SubStore.
-func (fs *FileStore) newFileSubStore(channel string, doRecover bool) (*FileSubStore, error) {
+func (fs *FileStore) newFileSubStore(channel string, limits *SubStoreLimits, doRecover bool) (*FileSubStore, error) {
 	ss := &FileSubStore{
 		fm:       fs.fm,
 		subs:     make(map[uint64]*subscription),
 		opts:     &fs.opts,
 		crcTable: fs.crcTable,
 	}
-	// Defaults to the global limits
-	subStoreLimits := fs.limits.SubStoreLimits
-	// See if there is an override
-	thisChannelLimits, exists := fs.limits.PerChannel[channel]
-	if exists {
-		// Use this channel specific limits
-		subStoreLimits = thisChannelLimits.SubStoreLimits
-	}
-	ss.init(channel, &subStoreLimits)
+	ss.init(channel, limits)
 	// Convert the CompactInterval in time.Duration
 	ss.compactItvl = time.Duration(ss.opts.CompactInterval) * time.Second
 

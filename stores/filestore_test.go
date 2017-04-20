@@ -4455,3 +4455,11 @@ func TestFSNegativeLimits(t *testing.T) {
 
 	testNegativeLimit(t, fs)
 }
+
+func TestFSLimitWithWildcardsInConfig(t *testing.T) {
+	cleanupDatastore(t, defaultDataStore)
+	defer cleanupDatastore(t, defaultDataStore)
+	fs := createDefaultFileStore(t)
+	defer fs.Close()
+	testLimitWithWildcardsInConfig(t, fs)
+}
