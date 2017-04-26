@@ -18,14 +18,12 @@ import (
 )
 
 func setPartitionsVarsForTest() {
-	partitionsCheckInterval = 250 * time.Millisecond
-	partitionsNextMsgTimeout = 250 * time.Millisecond
+	partitionsRequestTimeout = 250 * time.Millisecond
 	partitionsNoPanic = true
 }
 
 func resetDefaultPartitionsVars() {
-	partitionsCheckInterval = partitionsDefaultCheckInterval
-	partitionsNextMsgTimeout = partitionsDefaultNextMsgTimeout
+	partitionsRequestTimeout = partitionsDefaultRequestTimeout
 	partitionsNoPanic = false
 }
 
@@ -517,11 +515,11 @@ func TestPartitionsSendListAfterRouteEstablished(t *testing.T) {
 	defer s2.Shutdown()
 	mu.Unlock()
 
-	// Wait for ns1 to report that the route is Setup
+	// Wait for ns1 and ns2 to report that the route is established
 	timeout := time.Now().Add(3 * time.Second)
 	ok := false
 	for time.Now().Before(timeout) {
-		if ns1.NumRoutes() == 1 {
+		if ns1.NumRoutes() == 1 && ns2.NumRoutes() == 1 {
 			ok = true
 			break
 		}
@@ -535,7 +533,7 @@ func TestPartitionsSendListAfterRouteEstablished(t *testing.T) {
 	// After the route is established, each server should resend
 	// their list, so the total of times each server receives
 	// the list should be 2.
-	time.Sleep(2 * partitionsCheckInterval)
+	time.Sleep(500 * time.Millisecond)
 	mu.Lock()
 	cs1 := fooFromS1
 	cs2 := fooFromS2

@@ -4,6 +4,7 @@ package server
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	natsd "github.com/nats-io/gnatsd/server"
@@ -17,10 +18,8 @@ import (
 const (
 	// Prefix of subject to send list of channels in this server's partition
 	partitionsPrefix = "_STAN.part"
-	// Default interval we check for topology change
-	partitionsDefaultCheckInterval = time.Second
 	// Default timeout for a server to wait for replies to its request
-	partitionsDefaultNextMsgTimeout = time.Second
+	partitionsDefaultRequestTimeout = time.Second
 	// This is the value that is stored in the sublist for a given subject
 	channelInterest = 1
 	// Messages channel size
@@ -31,21 +30,20 @@ const (
 
 // So that we can override in tests
 var (
-	partitionsCheckInterval  = partitionsDefaultCheckInterval
-	partitionsNextMsgTimeout = partitionsDefaultNextMsgTimeout
+	partitionsRequestTimeout = partitionsDefaultRequestTimeout
 	partitionsNoPanic        = false
 )
 
 type partitions struct {
+	sync.Mutex
 	s               *StanServer
 	channels        []string
 	sl              *util.Sublist
 	nc              *nats.Conn
 	sendListSubject string
 	ctrlMsgSubject  string // send to this subject when processing close/unsub requests
-	servers         map[string]struct{}
 	msgsCh          chan *nats.Msg
-	numGoRoutines   int // total of go routines used by partitioning code
+	isShutdown      bool
 	quitCh          chan struct{}
 }
 
@@ -77,22 +75,22 @@ func (s *StanServer) initPartitions(sOpts *Options, nOpts *natsd.Options, storeC
 		return fmt.Errorf("unable to subscribe: %v", err)
 	}
 	sub.SetPendingLimits(-1, -1)
-	p.servers = make(map[string]struct{})
-	// Capture the known list of NATS Servers before sending our list.
-	// If later the known servers change, it will be interpreted as
-	// a change in the NATS cluster, so we will send our channels list
-	// again.
-	p.updateServersMap(p.nc.DiscoveredServers())
+	p.Lock()
+	// Set this before the first attempt so we don't miss any notification
+	// of a change in topology. Since we hold the lock, and even if there
+	// was a notification happening now, the callback will execute only
+	// after we are done with the initial check.
+	nc.SetDiscoveredServersHandler(p.topologyChanged)
 	// Now send our list and check if any server is complaining
 	// about having one channel in common.
 	if err := p.checkChannelsUniqueInCluster(); err != nil {
+		p.Unlock()
 		return err
 	}
+	p.Unlock()
 	p.msgsCh = make(chan *nats.Msg, partitionsMsgChanSize)
-	p.numGoRoutines = 2
-	p.quitCh = make(chan struct{}, p.numGoRoutines)
-	s.wg.Add(p.numGoRoutines)
-	go p.checkForTopologyChanges()
+	p.quitCh = make(chan struct{}, 1)
+	s.wg.Add(1)
 	go p.postClientPublishIncomingMsgs()
 	return nil
 }
@@ -109,49 +107,25 @@ func (p *partitions) createChannelsMapAndSublist(storeChannels map[string]*store
 	}
 }
 
-// Adds any element from the given array into scServers and return
-// true if any were added, false otherwise.
-func (p *partitions) updateServersMap(servers []string) bool {
-	hasNew := false
-	for _, url := range servers {
-		if _, present := p.servers[url]; !present {
-			hasNew = true
-			p.servers[url] = struct{}{}
-		}
+// Topology changed. Sends the list of channels.
+func (p *partitions) topologyChanged(_ *nats.Conn) {
+	p.Lock()
+	defer p.Unlock()
+	if p.isShutdown {
+		return
 	}
-	return hasNew
-}
-
-// Checks at regular intervals if the NATS topology has changed
-// (based on the list of discovered servers). If so, sends the
-// list of channels.
-// Would be nice to be able to provide a callback to NATS that
-// would be invoked whenever the client library processes an
-// async INFO and that the array changed.
-func (p *partitions) checkForTopologyChanges() {
-	defer p.s.wg.Done()
-	for {
-		select {
-		case <-p.quitCh:
+	if err := p.checkChannelsUniqueInCluster(); err != nil {
+		// If server is started from command line, the Fatalf
+		// call will cause the process to exit. If the server
+		// is run programmatically and no logger has been set
+		// we need to exit with the panic.
+		Fatalf("Partitioning error: %v", err)
+		// For tests
+		if partitionsNoPanic {
+			p.s.setLastError(err)
 			return
-		case <-time.After(partitionsCheckInterval):
-			servers := p.nc.DiscoveredServers()
-			if hasNew := p.updateServersMap(servers); hasNew {
-				if err := p.checkChannelsUniqueInCluster(); err != nil {
-					// If server is started from command line, the Fatalf
-					// call will cause the process to exit. If the server
-					// is run programmatically and no logger has been set
-					// we need to exit with the panic.
-					Fatalf("Partitioning error: %v", err)
-					// For tests
-					if partitionsNoPanic {
-						p.s.setLastError(err)
-						continue
-					}
-					panic(err)
-				}
-			}
 		}
+		panic(err)
 	}
 }
 
@@ -209,7 +183,7 @@ func (p *partitions) checkChannelsUniqueInCluster() error {
 	// Since we don't know how many servers are out there, keep
 	// calling NextMsg until we get a timeout
 	for {
-		reply, err := replySub.NextMsg(partitionsNextMsgTimeout)
+		reply, err := replySub.NextMsg(partitionsRequestTimeout)
 		if err == nats.ErrTimeout {
 			return nil
 		}
@@ -393,11 +367,15 @@ func decodeChannels(data []byte) ([]string, error) {
 // Notifies all go-routines used by partitioning code that the
 // server is shuting down and closes the internal NATS connection.
 func (p *partitions) shutdown() {
+	p.Lock()
+	if p.isShutdown {
+		p.Unlock()
+		return
+	}
+	p.isShutdown = true
+	p.Unlock()
 	if p.quitCh != nil {
-		// Notify all go routines
-		for i := 0; i < p.numGoRoutines; i++ {
-			p.quitCh <- struct{}{}
-		}
+		p.quitCh <- struct{}{}
 	}
 	if p.nc != nil {
 		p.nc.Close()
